@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -85,7 +85,6 @@
 #include "wlan_hdd_cfg80211.h"
 
 #include "sapApi.h"
-#include "vos_trace.h"
 
 
 
@@ -171,13 +170,6 @@ VOS_STATUS vos_preOpen ( v_CONTEXT_t *pVosContext )
    vos_mem_zero(gpVosContext, sizeof(VosContextType));
 
    *pVosContext = gpVosContext;
-
-   /* Initialize the spinlock */
-   vos_trace_spin_lock_init();
-   /* it is the right time to initialize MTRACE structures */
-   #if defined(TRACE_RECORD)
-       vosTraceInit();
-   #endif
 
    return VOS_STATUS_SUCCESS;
 
@@ -277,7 +269,6 @@ VOS_STATUS vos_open( v_CONTEXT_t *pVosContext, v_SIZE_t hddContextSize )
 
    /* Initialize the timer module */
    vos_timer_module_init();
-
 
    /* Initialize the probe event */
    if (vos_event_init(&gpVosContext->ProbeEvent) != VOS_STATUS_SUCCESS)
@@ -513,29 +504,11 @@ VOS_STATUS vos_preStart( v_CONTEXT_t vosContext )
    VOS_TRACE(VOS_MODULE_ID_SYS, VOS_TRACE_LEVEL_INFO,
              "vos prestart");
 
-   if (gpVosContext != pVosContext)
-   {
-      VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                "%s: Context mismatch", __func__);
-      VOS_ASSERT(0);
-      return VOS_STATUS_E_INVAL;
-   }
+   VOS_ASSERT(gpVosContext == pVosContext);
 
-   if (pVosContext->pMACContext == NULL)
-   {
-       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-            "%s: MAC NULL context", __func__);
-       VOS_ASSERT(0);
-       return VOS_STATUS_E_INVAL;
-   }
+   VOS_ASSERT( NULL != pVosContext->pMACContext);
 
-   if (pVosContext->pWDAContext == NULL)
-   {
-       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-          "%s: WDA NULL context", __func__);
-       VOS_ASSERT(0);
-       return VOS_STATUS_E_INVAL;
-   }
+   VOS_ASSERT( NULL != pVosContext->pWDAContext);
 
    /* call macPreStart */
    vStatus = macPreStart(gpVosContext->pMACContext);
@@ -691,8 +664,7 @@ VOS_STATUS vos_start( v_CONTEXT_t vosContext )
      vos_event_reset( &(gpVosContext->wdaCompleteEvent) );
      if (vos_is_logp_in_progress(VOS_MODULE_ID_VOSS, NULL))
      {
-       if (isSsrPanicOnFailure())
-           VOS_BUG(0);
+         VOS_BUG(0);
      }
      WDA_setNeedShutdown(vosContext);
      return VOS_STATUS_E_FAILURE;
@@ -706,11 +678,7 @@ VOS_STATUS vos_start( v_CONTEXT_t vosContext )
   if ( vStatus != VOS_STATUS_SUCCESS )
   {
      VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                 "%s: Failed to start WDA - WDA_shutdown needed", __func__);
-     if ( vStatus == VOS_STATUS_E_TIMEOUT )
-      {
-         WDA_setNeedShutdown(vosContext);
-      }
+                 "%s: Failed to start WDA", __func__);
      return VOS_STATUS_E_FAILURE;
   }
   VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_INFO,
@@ -1177,31 +1145,6 @@ void vos_set_load_unload_in_progress(VOS_MODULE_ID moduleId, v_U8_t value)
 
    gpVosContext->isLoadUnloadInProgress = value;
 }
-
-v_U8_t vos_is_reinit_in_progress(VOS_MODULE_ID moduleId, v_VOID_t *moduleContext)
-{
-  if (gpVosContext == NULL)
-  {
-    VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-        "%s: global voss context is NULL", __func__);
-    return 1;
-  }
-
-   return gpVosContext->isReInitInProgress;
-}
-
-void vos_set_reinit_in_progress(VOS_MODULE_ID moduleId, v_U8_t value)
-{
-  if (gpVosContext == NULL)
-  {
-    VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-        "%s: global voss context is NULL", __func__);
-    return;
-  }
-
-   gpVosContext->isReInitInProgress = value;
-}
-
 
 /**---------------------------------------------------------------------------
   
@@ -1772,11 +1715,6 @@ VOS_STATUS vos_rx_mq_serialize( VOS_MQ_ID msgQueueId, vos_msg_t *pMsg )
        pTargetMq = &(gpVosContext->vosSched.wdiRxMq);
        break;
     }
-    case VOS_MQ_ID_TL:
-    {
-       pTargetMq = &(gpVosContext->vosSched.tlRxMq);
-       break;
-    }
 
     default:
 
@@ -1958,7 +1896,7 @@ void vos_abort_mac_scan(void)
        return;
     }
 
-    hdd_abort_mac_scan(pHddCtx, eCSR_SCAN_ABORT_DEFAULT);
+    hdd_abort_mac_scan(pHddCtx);
     return;
 }
 
@@ -2019,6 +1957,14 @@ VOS_STATUS vos_shutdown(v_CONTEXT_t vosContext)
   }
 
   ((pVosContextType)vosContext)->pMACContext = NULL;
+
+  vosStatus = vos_nv_close();
+  if (!VOS_IS_STATUS_SUCCESS(vosStatus))
+  {
+     VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
+         "%s: Failed to close NV", __func__);
+     VOS_ASSERT( VOS_IS_STATUS_SUCCESS( vosStatus ) );
+  }
 
   vosStatus = sysClose( vosContext );
   if (!VOS_IS_STATUS_SUCCESS(vosStatus))
@@ -2200,29 +2146,31 @@ VOS_STATUS vos_wlanRestart(void)
 v_VOID_t vos_fwDumpReq(tANI_U32 cmd, tANI_U32 arg1, tANI_U32 arg2,
                         tANI_U32 arg3, tANI_U32 arg4)
 {
+   VOS_STATUS vStatus          = VOS_STATUS_SUCCESS;
+
+   /* Reset wda wait event */
+   vos_event_reset(&gpVosContext->wdaCompleteEvent);
+
    WDA_HALDumpCmdReq(NULL, cmd, arg1, arg2, arg3, arg4, NULL);
-}
 
-/**---------------------------------------------------------------------------
+   /* Need to update time out of complete */
+   vStatus = vos_wait_single_event(&gpVosContext->wdaCompleteEvent,
+                                   VOS_WDA_RESP_TIMEOUT );
 
-  \brief vos_is_wlan_in_badState() - get isFatalError flag from WD Ctx
+   if (vStatus != VOS_STATUS_SUCCESS)
+   {
+      if (vStatus == VOS_STATUS_E_TIMEOUT)
+      {
+         VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
+          "%s: Timeout occurred before WDA HAL DUMP complete\n", __func__);
+      }
+      else
+      {
+         VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
+           "%s: reporting other error", __func__);
+      }
+   }
 
-  \param  - VOS_MODULE_ID   - module id
-          - moduleContext   - module context
+   return;
 
-  \return -  isFatalError value if WDCtx is valid otherwise true
-
-  --------------------------------------------------------------------------*/
-v_BOOL_t vos_is_wlan_in_badState(VOS_MODULE_ID moduleId,
-                                 v_VOID_t *moduleContext)
-{
-    struct _VosWatchdogContext *pVosWDCtx = get_vos_watchdog_ctxt();
-
-    if (pVosWDCtx == NULL){
-        VOS_TRACE(moduleId, VOS_TRACE_LEVEL_ERROR,
-                "%s: global wd context is null", __func__);
-
-        return TRUE;
-    }
-    return pVosWDCtx->isFatalError;
 }
