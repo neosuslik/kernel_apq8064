@@ -142,6 +142,3 @@ obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
 obj-$(CONFIG_MOBICORE_SUPPORT)  += gud/
 
 obj-$(CONFIG_CORESIGHT)		+= coresight/
-
-# backoff
-obj-$(CONFIG_SUSPEND_BACKOFF)		+= backoff/
