@@ -1,4 +1,5 @@
 /* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2013 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -42,6 +43,14 @@ static int msm_csid_cid_lut(
 		return -EINVAL;
 	}
 	for (i = 0; i < csid_lut_params->num_cid && i < 16; i++) {
+		if (csid_lut_params->vc_cfg[i].cid >=
+			csid_lut_params->num_cid ||
+			csid_lut_params->vc_cfg[i].cid < 0) {
+			pr_err("%s: cid outside range %d\n",
+				__func__, csid_lut_params->vc_cfg[i].cid);
+			return -EINVAL;
+		}
+
 		CDBG("%s lut params num_cid = %d, cid = %d, dt = %x, df = %d\n",
 			__func__,
 			csid_lut_params->num_cid,
@@ -358,6 +367,11 @@ static int msm_csid_release(struct csid_device *csid_dev)
 {
 	uint32_t irq;
 	uint8_t core_id = 0;
+
+#if defined(CONFIG_SONY_CAM_V4L2)
+	if (!csid_dev->base)
+		return -EINVAL;
+#endif
 
 	if (csid_dev->csid_state != CSID_POWER_UP) {
 		pr_err("%s: csid invalid state %d\n", __func__,
