@@ -48,10 +48,6 @@
 int graphics_boost = 6;
 #endif
 
-#ifdef CONFIG_CPU_FREQ_GOV_SLIM
-int graphics_boost = 6;
-#endif
-
 struct clk_pair {
 	const char *name;
 	uint map;
@@ -231,9 +227,6 @@ static int kgsl_pwrctrl_thermal_pwrlevel_store(struct device *dev,
 
 	pwr->thermal_pwrlevel = level;
 
-#ifdef CONFIG_CPU_FREQ_GOV_SLIM
-        graphics_boost = pwr->active_pwrlevel;
-#endif
 	/*
 	 * If there is no power policy set the clock to the requested thermal
 	 * level - if thermal now happens to be higher than max, then that will
